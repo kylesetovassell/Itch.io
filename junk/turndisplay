@@ -1,0 +1,46 @@
+-- TurnDisplayScript (LocalScript inside TurnStatusGui)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TurnEvent = ReplicatedStorage:WaitForChild("TurnEvent")
+
+local player1Panel = script.Parent:WaitForChild("Player1Panel")
+local player2Panel = script.Parent:WaitForChild("Player2Panel")
+
+local player1Name = player1Panel:WaitForChild("NameLabel")
+local player1Timer = player1Panel:WaitForChild("TimerLabel")
+local player2Name = player2Panel:WaitForChild("NameLabel")
+local player2Timer = player2Panel:WaitForChild("TimerLabel")
+
+local countdownActive = false
+
+TurnEvent.OnClientEvent:Connect(function(data)
+	countdownActive = false
+	task.wait()
+
+	player1Name.Text = data.player1Name
+	player2Name.Text = data.player2Name
+
+	if data.status == "waiting" then
+		player1Timer.Text = ""
+		player2Timer.Text = ""
+		return
+	end
+
+	countdownActive = true
+	task.spawn(function()
+		for i = data.seconds, 1, -1 do
+			if not countdownActive then break end
+
+			if data.currentTurn == 1 then
+				player1Timer.Text = tostring(i)
+				player2Timer.Text = ""
+			else
+				player2Timer.Text = tostring(i)
+				player1Timer.Text = ""
+			end
+
+			task.wait(1)
+		end
+	end)
+end)
+
+print("--- TURN DISPLAY READY ---")
