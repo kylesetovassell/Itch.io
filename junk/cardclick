@@ -1,1 +1,43 @@
+local CardClickEvent = ReplicatedStorage:WaitForChild("CardClickEvent")
+local TurnEvent = ReplicatedStorage:WaitForChild("TurnEvent") -- server -> clients, for UI updates
 
+local players = {} -- {player1, player2}
+local currentTurnIndex = 1
+local guessesLeft = 2
+local firstFlip = nil
+local turnTimer = nil
+local boardCards = {} -- list of cardParts on board
+
+local function getCurrentPlayer()
+	return players[currentTurnIndex]
+end
+
+local function switchTurn()
+	if turnTimer then task.cancel(turnTimer) end
+
+	-- if a card was flipped but not matched when turn ends, flip it back
+	if firstFlip then
+		firstFlip:SetAttribute("Revealed", false)
+		firstFlip = nil
+	end
+
+	currentTurnIndex = (currentTurnIndex == 1) and 2 or 1
+	guessesLeft = 2
+
+	TurnEvent:FireAllClients(getCurrentPlayer().Name, 15)
+
+	turnTimer = task.delay(15, function()
+		print(getCurrentPlayer().Name .. " ran out of time. Forfeiting turn.")
+		switchTurn()
+	end)
+end
+
+local function startGame()
+	currentTurnIndex = 1
+	guessesLeft = 2
+	firstFlip = nil
+	TurnEvent:FireAllClients(getCurrentPlayer().Name, 15)
+	turnTimer = task.delay(15, function()
+		switchTurn()
+	end)
+end
