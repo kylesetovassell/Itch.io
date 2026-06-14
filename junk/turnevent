@@ -1,10 +1,9 @@
 CardClickEvent.OnServerEvent:Connect(function(player, cardPart)
-	-- 1. Must be this player's turn
 	if player ~= getCurrentPlayer() then
 		return -- ignore, not their turn
 	end
 
-	-- 2. Card must exist, not already matched, not already revealed/closed
+	-- Card must exist, not already matched, not already revealed/closed
 	if not cardPart or cardPart.Parent ~= boardArea then return end
 	if cardPart:GetAttribute("Matched") == true then return end
 	if cardPart:GetAttribute("Revealed") == true then return end -- already flipped this round
