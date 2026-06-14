@@ -1,0 +1,52 @@
+CardClickEvent.OnServerEvent:Connect(function(player, cardPart)
+	-- 1. Must be this player's turn
+	if player ~= getCurrentPlayer() then
+		return -- ignore, not their turn
+	end
+
+	-- 2. Card must exist, not already matched, not already revealed/closed
+	if not cardPart or cardPart.Parent ~= boardArea then return end
+	if cardPart:GetAttribute("Matched") == true then return end
+	if cardPart:GetAttribute("Revealed") == true then return end -- already flipped this round
+	if cardPart == firstFlip then return end
+
+	-- Reveal this card to everyone
+	cardPart:SetAttribute("Revealed", true)
+	guessesLeft -= 1
+
+	if not firstFlip then
+		firstFlip = cardPart
+	else
+		-- second guess: compare
+		local secondFlip = cardPart
+
+		if firstFlip:GetAttribute("CardID") == secondFlip:GetAttribute("CardID") then
+			-- MATCH: lock both permanently
+			firstFlip:SetAttribute("Matched", true)
+			secondFlip:SetAttribute("Matched", true)
+			-- award point to current player (track in a table if needed)
+			print(player.Name .. " found a match!")
+		else
+			-- NO MATCH: schedule flip-back, but don't block turn switch
+			task.delay(1, function()
+				if firstFlip then firstFlip:SetAttribute("Revealed", false) end
+				secondFlip:SetAttribute("Revealed", false)
+			end)
+		end
+
+		firstFlip = nil
+	end
+
+	-- After 2 guesses used, switch turn (whether match or not)
+	if guessesLeft <= 0 then
+		task.delay(1.1, function() -- wait slightly longer than the flip-back delay
+			switchTurn()
+		end)
+	else
+		-- restart timer for the remaining guess
+		if turnTimer then task.cancel(turnTimer) end
+		turnTimer = task.delay(15, function()
+			switchTurn()
+		end)
+	end
+end)
