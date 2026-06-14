@@ -1,0 +1,47 @@
+local function getCurrentPlayer()
+	return seatedPlayers[currentTurnIndex]
+end
+
+local function switchTurn()
+	if turnTimer then task.cancel(turnTimer) end
+
+	if firstFlip then
+		firstFlip:SetAttribute("Revealed", false)
+		firstFlip = nil
+	end
+
+	currentTurnIndex = (currentTurnIndex == 1) and 2 or 1
+	guessesLeft = 2
+
+	local current = getCurrentPlayer()
+	if current then
+		TurnEvent:FireAllClients(current.Name, 15)
+		turnTimer = task.delay(15, function()
+			print(current.Name .. " ran out of time. Forfeiting turn.")
+			switchTurn()
+		end)
+	end
+end
+
+local function startGame()
+	gameActive = true
+	currentTurnIndex = 1
+	guessesLeft = 2
+	firstFlip = nil
+
+	local current = getCurrentPlayer()
+	TurnEvent:FireAllClients(current.Name, 15)
+	turnTimer = task.delay(15, function()
+		switchTurn()
+	end)
+end
+
+local function endGame()
+	gameActive = false
+	if turnTimer then task.cancel(turnTimer) end
+	firstFlip = nil
+	seatedPlayers = {}
+	for _, child in ipairs(boardArea:GetChildren()) do
+		child:Destroy()
+	end
+end
