@@ -1,0 +1,205 @@
+-- GameSetupScript (ServerScriptService)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LoadBoardEvent = ReplicatedStorage:WaitForChild("LoadBoardEvent")
+local CardClickEvent = ReplicatedStorage:WaitForChild("CardClickEvent")
+local TurnEvent = ReplicatedStorage:WaitForChild("TurnEvent")
+
+local cardPool = {
+	1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 
+	6, 6, 7, 7, 8, 8, 9, 9, 10, 10
+}
+
+local function shuffleTable(t)
+	for i = #t, 2, -1 do
+		local j = math.random(i)
+		t[i], t[j] = t[j], t[i]
+	end
+end
+
+-- EVERYTHING below becomes per-table
+local function setupTable(tableGroup)
+	local boardArea = tableGroup:WaitForChild("BoardArea")
+	local seat1 = tableGroup:WaitForChild("Seat1")
+	local seat2 = tableGroup:WaitForChild("Seat2")
+
+	local waitingTimer = nil
+	local seatedPlayers = {}
+	local currentTurnIndex = 1
+	local guessesLeft = 2
+	local firstFlip = nil
+	local turnTimer = nil
+	local gameActive = false
+
+	local function generatePhysicalBoard()
+		for _, child in ipairs(boardArea:GetChildren()) do
+			child:Destroy()
+		end
+
+		local gameLayout = {table.unpack(cardPool)}
+		shuffleTable(gameLayout)
+
+		local rows, cols, tileSize, spacing = 5, 4, 3, 0.5
+		local startX = boardArea.Position.X - (((cols - 1) * (tileSize + spacing)) / 2)
+		local startZ = boardArea.Position.Z - (((rows - 1) * (tileSize + spacing)) / 2)
+		local posY = boardArea.Position.Y + 0.5 
+		local poolIndex = 1
+
+		for r = 1, rows do
+			for c = 1, cols do
+				local cardId = gameLayout[poolIndex]
+				local newCard = ReplicatedStorage:WaitForChild("CardPart"):Clone()
+				newCard.Size = Vector3.new(tileSize, 0.2, tileSize)
+				newCard.Anchored = true
+				newCard.Position = Vector3.new(
+					startX + ((c - 1) * (tileSize + spacing)),
+					posY,
+					startZ + ((r - 1) * (tileSize + spacing))
+				)
+				newCard:SetAttribute("CardID", cardId)
+				newCard:SetAttribute("Matched", false)
+				newCard:SetAttribute("Revealed", false)
+				newCard.Parent = boardArea
+				poolIndex += 1
+			end
+		end
+
+		task.wait(0.1)
+		LoadBoardEvent:FireClient(seatedPlayers[1], boardArea)
+		LoadBoardEvent:FireClient(seatedPlayers[2], boardArea)
+	end
+
+	local function getCurrentPlayer()
+		return seatedPlayers[currentTurnIndex]
+	end
+
+	local function fireTurnEvent(...)
+		for _, p in pairs(seatedPlayers) do
+			if p then TurnEvent:FireClient(p, ...) end
+		end
+	end
+
+	local function switchTurn()
+		if turnTimer then task.cancel(turnTimer) end
+		if firstFlip then
+			firstFlip:SetAttribute("Revealed", false)
+			firstFlip = nil
+		end
+		currentTurnIndex = (currentTurnIndex == 1) and 2 or 1
+		guessesLeft = 2
+		local current = getCurrentPlayer()
+		if current then
+			fireTurnEvent(current.Name, 15)
+			turnTimer = task.delay(15, switchTurn)
+		end
+	end
+
+	local function startGame()
+		gameActive = true
+		currentTurnIndex = 1
+		guessesLeft = 2
+		firstFlip = nil
+		local current = getCurrentPlayer()
+		fireTurnEvent(current.Name, 15)
+		turnTimer = task.delay(15, switchTurn)
+	end
+
+	local function endGame()
+		gameActive = false
+		if turnTimer then task.cancel(turnTimer) end
+		if waitingTimer then task.cancel(waitingTimer); waitingTimer = nil end
+		firstFlip = nil
+		for _, child in ipairs(boardArea:GetChildren()) do
+			child:Destroy()
+		end
+	end
+
+	local function bindSeatDetection(seatPart, seatIndex)
+		seatPart:GetPropertyChangedSignal("Occupant"):Connect(function()
+			print("SEAT SIGNAL FIRED: " .. seatPart.Name .. " | Occupant: " .. tostring(seatPart.Occupant))
+			local humanoid = seatPart.Occupant
+			if humanoid then
+				local player = game.Players:GetPlayerFromCharacter(humanoid.Parent)
+				if player then
+					seatedPlayers[seatIndex] = player
+					if seatedPlayers[1] and seatedPlayers[2] then
+						if waitingTimer then task.cancel(waitingTimer); waitingTimer = nil end
+						generatePhysicalBoard()
+						task.wait(0.2)
+						startGame()
+					else
+						local count = (seatedPlayers[1] and 1 or 0) + (seatedPlayers[2] and 1 or 0)
+						fireTurnEvent("Waiting for players (" .. count .. "/2)", 0)
+						if count == 1 then
+							if waitingTimer then task.cancel(waitingTimer) end
+							waitingTimer = task.delay(20, function()
+								fireTurnEvent("Waiting for players (0/2)", 0)
+							end)
+						end
+					end
+				end
+			else
+				seatedPlayers[seatIndex] = nil
+				endGame()
+				local count = (seatedPlayers[1] and 1 or 0) + (seatedPlayers[2] and 1 or 0)
+				fireTurnEvent("Waiting for players (" .. count .. "/2)", 0)
+			end
+		end)
+	end
+	
+	
+	local function bindSeatDetection(seatPart, seatIndex)
+		seatPart:GetPropertyChangedSignal("Occupant"):Connect(function()
+			print("SEAT SIGNAL FIRED: " .. seatPart.Name .. " | Occupant: " .. tostring(seatPart.Occupant))
+			local humanoid = seatPart.Occupant
+	
+	
+
+	bindSeatDetection(seat1, 1)
+	bindSeatDetection(seat2, 2)
+
+	-- Per-table click handling: only respond if the clicking player is seated at THIS table
+	CardClickEvent.OnServerEvent:Connect(function(player, cardPart)
+		if not gameActive then return end
+		if cardPart.Parent ~= boardArea then return end -- ignore clicks for other tables
+		if player ~= getCurrentPlayer() then return end
+
+		if cardPart:GetAttribute("Matched") == true then return end
+		if cardPart:GetAttribute("Revealed") == true then return end
+		if cardPart == firstFlip then return end
+
+		cardPart:SetAttribute("Revealed", true)
+		guessesLeft -= 1
+
+		if not firstFlip then
+			firstFlip = cardPart
+		else
+			local secondFlip = cardPart
+			if firstFlip:GetAttribute("CardID") == secondFlip:GetAttribute("CardID") then
+				firstFlip:SetAttribute("Matched", true)
+				secondFlip:SetAttribute("Matched", true)
+			else
+				task.delay(1, function()
+					if firstFlip then firstFlip:SetAttribute("Revealed", false) end
+					secondFlip:SetAttribute("Revealed", false)
+				end)
+			end
+			firstFlip = nil
+		end
+
+		if guessesLeft <= 0 then
+			task.delay(1.1, switchTurn)
+		else
+			if turnTimer then task.cancel(turnTimer) end
+			turnTimer = task.delay(15, switchTurn)
+		end
+	end)
+end
+
+-- Find and set up ALL tables automatically
+for _, obj in ipairs(workspace:GetChildren()) do
+	if obj:IsA("Folder") and obj.Name:match("^MatchGameTable") then
+		setupTable(obj)
+	end
+end
+
+print("--- GAME SETUP SCRIPT INITIALIZED FOR ALL TABLES ---")
